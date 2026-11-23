@@ -177,7 +177,7 @@ def show_punchline():
 # Create main window
 window = tk.Tk()
 window.title("Joke Telling Assistant")
-window.geometry("650x700")
+window.geometry("650x780")
 window.resizable(False, False)
 window.config(bg=BG)
 
@@ -319,7 +319,7 @@ button_frame.pack(pady=(25, 10))
 # Tell joke button
 tell_button = make_button(
     button_frame,
-    "TELL ME A JOKE",
+    "Alexa tell me a Joke",
     tell_joke,
     BLUE,
     BG,
@@ -355,7 +355,7 @@ next_button.pack(pady=(10, 20))
 # Exit button
 exit_button = tk.Button(
     window,
-    text="EXIT",
+    text="Quit",
     font=("Segoe UI", 10, "bold"),
     bg=BG,
     fg=GREY,

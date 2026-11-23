@@ -23,10 +23,10 @@ YELLOW = "#FACC15"
 
 FONT = "Segoe UI"
 
-# The text file must be in the same folder
+# The student marks file is stored in the resources folder.
 # as this Python file.
 
-FILE_PATH = Path(__file__).with_name("studentMarks.txt")
+FILE_PATH = Path(__file__).parent / "resources" / "studentMarks.txt"
 
 students = []
 current_filter = "all"
@@ -90,8 +90,8 @@ def load_students():
             marks = [int(x.strip()) for x in row[2:5]]
             exam = int(row[5].strip())
 
-            if not code.isdigit() or len(code) != 4:
-                raise ValueError("Invalid student code.")
+            if not code.isascii() or not code.isdigit() or len(code) != 4 or not 1000 <= int(code) <= 9999:
+             raise ValueError("Invalid student code.")
 
             if not name:
                 raise ValueError("Student name is missing.")
@@ -643,6 +643,22 @@ def get_selected_student():
     return None
 
 # ADD / UPDATE STUDENT FORM
+# Display the selected student's results.
+# View individual student record
+def view_student():
+    student = get_selected_student()
+
+    if student:
+        messagebox.showinfo(
+            "Student Record",
+            f"Name: {student['name']}\n"
+            f"Code: {student['code']}\n"
+            f"Coursework: {get_coursework(student)}/60\n"
+            f"Exam: {student['exam']}/100\n"
+            f"Total: {get_total(student)}/160\n"
+            f"Percentage: {get_percentage(student):.1f}%\n"
+            f"Grade: {get_grade(student)}"
+        )
 
 def student_form(existing=None):
 
@@ -771,10 +787,9 @@ def student_form(existing=None):
 
             exam = int(entries[5].get())
 
-            if len(code) != 4 or not code.isdigit():
-                raise ValueError(
-                    "Student code must contain exactly 4 digits."
-                )
+            if not code.isascii() or not code.isdigit() or len(code) != 4 or not 1000 <= int(code) <= 9999:
+             raise ValueError(
+            "Student code must be between 1000 and 9999.") 
 
             if not name:
                 raise ValueError("Please enter a student name.")

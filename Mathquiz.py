@@ -297,7 +297,7 @@ def clear_screens():
 
 
 # Returns the user to the difficulty selection menu.
-def display_menu():
+def displayMenu():
 
     global current_screen
 
@@ -326,7 +326,7 @@ def select_difficulty(level):
 # Returns to the main menu using the back button.
 def go_back():
 
-    display_menu()
+    displayMenu()
 
 # START QUIZ
 
@@ -340,14 +340,26 @@ def start_quiz():
     answered = False
 
     update_score()
-    next_question()
+    displayProblem()
 
 # GENERATE QUESTIONS
+# GENERATE AND DISPLAY QUESTIONS
+# RANDOM NUMBER GENERATION
 
-# Generates random addition or subtraction questions.
-# The number range depends on the selected difficulty.
-def next_question():
+# Generates a random number based on the difficulty.
+def randomInt(minimum, maximum):
+    return random.randint(minimum, maximum)
 
+
+# Randomly selects addition or subtraction.
+def decideOperation():
+    return random.choice(["+", "-"])
+
+
+# GENERATE AND DISPLAY QUESTIONS
+
+# Displays a question based on the selected difficulty.
+def displayProblem():
     global question_number, attempts
     global correct_answer, answered, after_id
 
@@ -358,7 +370,7 @@ def next_question():
 
     # Displays the results after all ten questions.
     if question_number >= total_questions:
-        display_results()
+        displayResults()
         return
 
     question_number += 1
@@ -374,10 +386,10 @@ def next_question():
     else:
         minimum, maximum = 1000, 9999
 
-    num1 = random.randint(minimum, maximum)
-    num2 = random.randint(minimum, maximum)
+    num1 = randomInt(minimum, maximum)
+    num2 = randomInt(minimum, maximum)
 
-    operation = random.choice(["+", "-"])
+    operation = decideOperation()
 
     if operation == "+":
         correct_answer = num1 + num2
@@ -409,7 +421,7 @@ def next_question():
 
 # Checks the user's answer and awards points.
 # The user gets two attempts for each question.
-def check_answer():
+def isCorrect():
 
     global attempts, score, answered, after_id
 
@@ -465,7 +477,7 @@ def check_answer():
         submit_button.set_enabled(False)
 
         # Moves to the next question after a short delay.
-        after_id = root.after(1100, next_question)
+        after_id = root.after(1100, displayProblem)
 
     else:
 
@@ -493,7 +505,7 @@ def check_answer():
             answer_entry.entry.config(state="disabled")
             submit_button.set_enabled(False)
 
-            after_id = root.after(1600, next_question)
+            after_id = root.after(1600, displayProblem)
 
 # UPDATE SCORE
 
@@ -505,7 +517,7 @@ def update_score():
 # RESULTS SCREEN
 
 # Displays the final score, grade and performance message.
-def display_results():
+def displayResults():
 
     global current_screen
 
@@ -548,7 +560,7 @@ def display_results():
 # Returns to the menu so the user can select another difficulty.
 def replay_quiz():
 
-    display_menu()
+    displayMenu()
 
 
 # Closes the application and cancels any pending question changes.
@@ -725,7 +737,7 @@ answer_entry.pack(pady=7)
 submit_button = RoundedButton(
     quiz_content,
     text="SUBMIT ANSWER  →",
-    command=check_answer,
+    command=isCorrect,
     width=300,
     height=52,
     colour=PURPLE,
@@ -814,11 +826,11 @@ exit_button.pack(pady=5)
 # KEYBOARD CONTROLS
 
 # Allows the user to submit an answer by pressing Enter.
-root.bind("<Return>", lambda event: check_answer())
+root.bind("<Return>", lambda event: isCorrect())
 
 # RUN APPLICATION
 
 # Displays the difficulty selection screen when the program starts.
-display_menu()
+displayMenu()
 
 root.mainloop()
