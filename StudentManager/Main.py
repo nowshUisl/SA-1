@@ -501,3 +501,347 @@ style.map(
     background=[("active", DARK_BLUE)]
 ) if False else None
 
+# STUDENT TABLE
+
+table_container = tk.Frame(
+    main,
+    bg=PANEL,
+    padx=12,
+    pady=12
+)
+
+table_container.pack(
+    fill="both",
+    expand=True,
+    padx=30,
+    pady=(0, 15)
+)
+
+columns = (
+    "Code",
+    "Name",
+    "Coursework",
+    "Exam",
+    "Total",
+    "Percentage",
+    "Grade"
+)
+
+tree = ttk.Treeview(
+    table_container,
+    columns=columns,
+    show="headings",
+    style="Modern.Treeview",
+    selectmode="browse"
+)
+
+widths = [90, 190, 115, 90, 90, 115, 75]
+
+for column, width in zip(columns, widths):
+    tree.heading(column, text=column)
+    tree.column(
+        column,
+        width=width,
+        minwidth=65,
+        anchor="center",
+        stretch=True
+    )
+
+tree.column("Name", anchor="w")
+
+scrollbar = ttk.Scrollbar(
+    table_container,
+    orient="vertical",
+    command=tree.yview
+)
+
+tree.configure(yscrollcommand=scrollbar.set)
+
+scrollbar.pack(side="right", fill="y")
+tree.pack(side="left", fill="both", expand=True)
+
+# Alternate row colours.
+tree.tag_configure("even", background=PANEL)
+tree.tag_configure("odd", background="#26364C")
+
+# REFRESH AND FILTER TABLE
+
+def refresh_table(data=None):
+
+    for item in tree.get_children():
+        tree.delete(item)
+
+    display_data = students if data is None else data
+
+    for index, student in enumerate(display_data):
+
+        tag = "even" if index % 2 == 0 else "odd"
+
+        tree.insert(
+            "",
+            "end",
+            iid=student["code"],
+            values=(
+                student["code"],
+                student["name"],
+                f"{get_coursework(student)}/60",
+                f"{student['exam']}/100",
+                f"{get_total(student)}/160",
+                f"{get_percentage(student):.1f}%",
+                get_grade(student)
+            ),
+            tags=(tag,)
+        )
+
+    update_stats()
+
+
+def apply_search(*args):
+
+    query = search_var.get().strip().lower()
+
+    results = [
+        s for s in students
+        if query in s["code"].lower()
+        or query in s["name"].lower()
+    ]
+
+    refresh_table(results)
+
+    if query:
+        set_status(f"Found {len(results)} matching students.")
+
+
+search_var.trace_add("write", apply_search)
+
+
+def display_all():
+
+    search_var.set("")
+    refresh_table()
+    set_status("Displaying all student records.")
+
+# SELECTED STUDENT
+
+def get_selected_student():
+
+    selected = tree.selection()
+
+    if not selected:
+        messagebox.showwarning(
+            "Select Student",
+            "Please select a student from the table first."
+        )
+        return None
+
+    code = selected[0]
+
+    for student in students:
+        if student["code"] == code:
+            return student
+
+    return None
+
+# ADD / UPDATE STUDENT FORM
+
+def student_form(existing=None):
+
+    form = tk.Toplevel(root)
+
+    form.title(
+        "Update Student" if existing else "Add Student"
+    )
+
+    form.geometry("480x650")
+    form.minsize(450, 610)
+    form.configure(bg=BG)
+    form.transient(root)
+    form.grab_set()
+
+    # Center the form over the main window.
+    form.update_idletasks()
+
+    x = root.winfo_rootx() + (
+        root.winfo_width() - form.winfo_width()
+    ) // 2
+
+    y = root.winfo_rooty() + (
+        root.winfo_height() - form.winfo_height()
+    ) // 2
+
+    form.geometry(f"+{max(0, x)}+{max(0, y)}")
+
+    title = "Edit Student" if existing else "Add New Student"
+
+    tk.Label(
+        form,
+        text=title,
+        bg=BG,
+        fg=WHITE,
+        font=(FONT, 23, "bold")
+    ).pack(anchor="w", padx=35, pady=(25, 5))
+
+    tk.Label(
+        form,
+        text="Enter the student information below.",
+        bg=BG,
+        fg=GREY,
+        font=(FONT, 10)
+    ).pack(anchor="w", padx=35, pady=(0, 18))
+
+    panel = tk.Frame(
+        form,
+        bg=PANEL,
+        padx=25,
+        pady=18
+    )
+
+    panel.pack(
+        fill="both",
+        expand=True,
+        padx=30,
+        pady=(0, 25)
+    )
+
+    labels = [
+        "Student Code",
+        "Student Name",
+        "Coursework Mark 1 (0-20)",
+        "Coursework Mark 2 (0-20)",
+        "Coursework Mark 3 (0-20)",
+        "Exam Mark (0-100)"
+    ]
+
+    values = [
+        existing["code"] if existing else "",
+        existing["name"] if existing else "",
+        existing["marks"][0] if existing else "",
+        existing["marks"][1] if existing else "",
+        existing["marks"][2] if existing else "",
+        existing["exam"] if existing else ""
+    ]
+
+    entries = []
+
+    for label_text, value in zip(labels, values):
+
+        tk.Label(
+            panel,
+            text=label_text,
+            bg=PANEL,
+            fg=GREY,
+            font=(FONT, 10, "bold")
+        ).pack(anchor="w", pady=(6, 4))
+
+        entry = tk.Entry(
+            panel,
+            bg=INPUT,
+            fg=WHITE,
+            insertbackground=WHITE,
+            disabledbackground=CARD,
+            disabledforeground=GREY,
+            relief="flat",
+            font=(FONT, 11),
+            bd=0
+        )
+
+        entry.pack(fill="x", ipady=8)
+        entry.insert(0, str(value))
+        entries.append(entry)
+
+    if existing:
+        entries[0].config(state="disabled")
+
+    # Validate the form and save the record.
+    def save_record():
+
+        code = (
+            existing["code"]
+            if existing else entries[0].get().strip()
+        )
+
+        name = entries[1].get().strip()
+
+        try:
+            marks = [
+                int(entries[2].get()),
+                int(entries[3].get()),
+                int(entries[4].get())
+            ]
+
+            exam = int(entries[5].get())
+
+            if len(code) != 4 or not code.isdigit():
+                raise ValueError(
+                    "Student code must contain exactly 4 digits."
+                )
+
+            if not name:
+                raise ValueError("Please enter a student name.")
+
+            if any(m < 0 or m > 20 for m in marks):
+                raise ValueError(
+                    "Coursework marks must be between 0 and 20."
+                )
+
+            if not 0 <= exam <= 100:
+                raise ValueError(
+                    "Exam mark must be between 0 and 100."
+                )
+
+            if not existing and any(
+                s["code"] == code for s in students
+            ):
+                raise ValueError(
+                    "This student code already exists."
+                )
+
+            record = {
+                "code": code,
+                "name": name,
+                "marks": marks,
+                "exam": exam
+            }
+
+            if existing:
+                index = students.index(existing)
+                students[index] = record
+            else:
+                students.append(record)
+
+            if save_students(show_message=False):
+                form.destroy()
+                apply_search()
+                set_status(
+                    f"Student {code} saved successfully."
+                )
+            else:
+                # The record remains in memory even if
+                # writing to disk fails.
+                form.destroy()
+                apply_search()
+
+        except ValueError as error:
+            messagebox.showerror(
+                "Invalid Details",
+                str(error),
+                parent=form
+            )
+
+    tk.Button(
+        panel,
+        text="SAVE STUDENT",
+        command=save_record,
+        bg=BLUE_DARK,
+        fg=WHITE,
+        activebackground=BLUE,
+        activeforeground=BG,
+        font=(FONT, 11, "bold"),
+        relief="flat",
+        cursor="hand2",
+        bd=0
+    ).pack(fill="x", ipady=11, pady=(20, 0))
+
+    entries[1 if existing else 0].focus_set()
+
+    form.bind("<Return>", lambda event: save_record())
