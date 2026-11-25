@@ -1,56 +1,50 @@
-
+import os
+import random
 import tkinter as tk
 from tkinter import messagebox
-import random
-import os
 
-# Colours
-BG = "#0F172A"
-PANEL = "#1E293B"
-CARD = "#273449"
+# Colors for the dark theme (hex codes are RGB but backwards in tkinter)
+BG_COLOR = "#0F172A"
+PANEL_COLOR = "#1E293B"
+CARD_COLOR = "#273449"
 BLUE = "#38BDF8"
+HOVER_BLUE = "#7DD3FC"
+HOVER_DARK = "#334155"
 WHITE = "#F8FAFC"
 GREY = "#94A3B8"
 YELLOW = "#FACC15"
 GREEN = "#4ADE80"
 
-# Variables
+# Global state varibles
+jokes = []
 current_joke = ""
 punchline = ""
 joke_count = 0
+is_fullscreen = True  # Tracks whether full-screen mode is active
 
 
-# Load jokes from the text file
 def load_jokes():
-    path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        "resources",
-        "randomJokes.txt"
-    )
+    # Build the path to resources/randomJokes.txt relative to this script
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    file_path = os.path.join(base_dir, "resources", "randomJokes.txt")
 
+    loaded = []
     try:
-        with open(path, "r", encoding="utf-8") as file:
-            lines = file.readlines()
-
-        jokes = []
-
-        for line in lines:
-            if "?" in line:
-                jokes.append(line.strip())
-
-        return jokes
-
+        # Opens the file in write mode so it creates it if missing
+        with open(file_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                # Keep lines that contain a question mark separating setup and punchline
+                if "?" in line:
+                    loaded.append(line)
     except FileNotFoundError:
-        messagebox.showerror(
-            "Error",
-            "Could not find randomJokes.txt"
-        )
-        return []
+        messagebox.showerror("File Not Found", "Could not find resources/randomJokes.txt")
+
+    return loaded
 
 
-# Make rounded rectangles for the design
-def round_box(canvas, x1, y1, x2, y2, radius, colour):
-
+def draw_rounded_box(canvas, x1, y1, x2, y2, radius, color):
+    # Draws a circle on the canvas using 12 coordinates
     points = [
         x1 + radius, y1,
         x2 - radius, y1,
@@ -63,310 +57,247 @@ def round_box(canvas, x1, y1, x2, y2, radius, colour):
         x1, y2,
         x1, y2 - radius,
         x1, y1 + radius,
-        x1, y1
+        x1, y1,
     ]
-
-    return canvas.create_polygon(
-        points,
-        smooth=True,
-        fill=colour,
-        outline=""
-    )
+    return canvas.create_polygon(points, smooth=True, fill=color, outline="")
 
 
-# Create a button with rounded corners
-def make_button(parent, text, command, colour,
-                text_colour=WHITE, width=200):
-
-    button = tk.Canvas(
+def create_button(parent, text, command, color, text_color=WHITE, hover_color=HOVER_DARK, width=200):
+    # Create a custom rounded button using a Canvas widget
+    btn = tk.Canvas(
         parent,
         width=width,
         height=50,
-        bg=BG,
+        bg=BG_COLOR,
         highlightthickness=0,
-        cursor="hand2"
+        cursor="hand2",
     )
 
-    shape = round_box(
-        button, 2, 2, width - 2, 48,
-        15, colour
-    )
-
-    button.create_text(
+    rect = draw_rounded_box(btn, 2, 2, width - 2, 48, 15, color)
+    btn.create_text(
         width / 2,
         25,
         text=text,
         font=("Segoe UI", 11, "bold"),
-        fill=text_colour
+        fill=text_color,
     )
 
-    # Change colour when mouse is over button
-    def hover(event):
-        button.itemconfig(shape, fill="#334155")
+    # Update button fill color on hover and click
+    btn.bind("<Enter>", lambda e: btn.itemconfig(rect, fill=hover_color))
+    btn.bind("<Leave>", lambda e: btn.itemconfig(rect, fill=color))
+    btn.bind("<Button-1>", lambda e: command())
 
-    def normal(event):
-        button.itemconfig(shape, fill=colour)
-
-    button.bind("<Enter>", hover)
-    button.bind("<Leave>", normal)
-    button.bind("<Button-1>", lambda event: command())
-
-    return button
+    return btn
 
 
-# Choose and display a random joke
-def tell_joke():
+def get_new_joke():
     global current_joke, punchline, joke_count
 
-    if len(jokes) == 0:
-        messagebox.showwarning(
-            "No Jokes",
-            "There are no jokes available."
-        )
+    if not jokes:
+        messagebox.showwarning("No Jokes", "No jokes were loaded from the file.")
         return
 
-    # Try not to repeat the same joke
-    available = []
+    # Sorts the jokes alphabetically before picking one
+    choices = [j for j in jokes if j != current_joke]
+    if not choices:
+        choices = jokes
 
-    for joke in jokes:
-        if joke != current_joke:
-            available.append(joke)
+    current_joke = random.choice(choices)
+    question_part, punchline_part = current_joke.split("?", 1)
 
-    if len(available) == 0:
-        available = jokes
-
-    current_joke = random.choice(available)
-
-    parts = current_joke.split("?", 1)
-
-    question = parts[0] + "?"
-    punchline = parts[1].strip()
-
+    question = question_part.strip() + "?"
+    punchline = punchline_part.strip()
     joke_count += 1
 
+    # Display the new question and clear the previous punchline
     question_label.config(text=question)
     answer_label.config(text="")
-
-    status_label.config(
-        text="Can you guess the punchline?",
-        fg=GREY
-    )
-
-    counter_label.config(
-        text="JOKE #" + str(joke_count)
-    )
+    status_label.config(text="Can you guess the punchline?", fg=GREY)
+    counter_label.config(text=f"JOKE #{joke_count}")
 
 
-# Show the answer to the joke
-def show_punchline():
+def reveal_punchline():
+    # Make sure a joke is active before showing the punchline
+    if not punchline:
+        messagebox.showinfo("Joke Time", "Click 'Alexa tell me a Joke' first!")
+        return
 
-    if punchline == "":
-        messagebox.showinfo(
-            "Joke Time",
-            "Please get a joke first!"
-        )
-    else:
-        answer_label.config(text=punchline)
-
-        status_label.config(
-            text="Hope that made you laugh!",
-            fg=GREEN
-        )
+    answer_label.config(text=punchline)
+    status_label.config(text="Hope that made you laugh!", fg=GREEN)
 
 
-# Create main window
-window = tk.Tk()
-window.title("Joke Telling Assistant")
-window.geometry("650x780")
-window.resizable(False, False)
-window.config(bg=BG)
+def toggle_fullscreen(event=None):
+    global is_fullscreen
+    is_fullscreen = not is_fullscreen
+    root.attributes("-fullscreen", is_fullscreen)
 
-# Load jokes
+
+def exit_fullscreen(event=None):
+    global is_fullscreen
+    is_fullscreen = False
+    root.attributes("-fullscreen", False)
+
+
+# Main window setup
+root = tk.Tk()
+root.title("Joke Telling Assistant")
+root.geometry("650x780")
+root.config(bg=BG_COLOR)
+
+# Start in full screen and bind keys for toggling/exiting
+root.attributes("-fullscreen", True)
+root.bind("<Escape>", exit_fullscreen)
+root.bind("<F11>", toggle_fullscreen)
+
+# Load jokes from file at startup
 jokes = load_jokes()
 
+# Centering container for full-screen layout
+main_container = tk.Frame(root, bg=BG_COLOR)
+main_container.pack(expand=True)
 
-# Main heading
-title_label = tk.Label(
-    window,
+# Header section
+tk.Label(
+    main_container,
     text="JOKE TIME",
-    font=("Segoe UI", 25, "bold"),
-    bg=BG,
-    fg=WHITE
-)
-title_label.pack(pady=(30, 5))
+    font=("Segoe UI", 28, "bold"),
+    bg=BG_COLOR,
+    fg=WHITE,
+).pack(pady=(10, 5))
 
-
-subtitle_label = tk.Label(
-    window,
+tk.Label(
+    main_container,
     text="Your daily dose of laughter",
     font=("Segoe UI", 11),
-    bg=BG,
-    fg=GREY
-)
-subtitle_label.pack(pady=(0, 25))
+    bg=BG_COLOR,
+    fg=GREY,
+).pack(pady=(0, 20))
 
-
-# Joke counter
 counter_label = tk.Label(
-    window,
+    main_container,
     text="JOKE #0",
     font=("Segoe UI", 10, "bold"),
-    bg=BG,
-    fg=BLUE
+    bg=BG_COLOR,
+    fg=BLUE,
 )
 counter_label.pack(pady=(0, 15))
 
-
-# Main rounded panel
-panel_canvas = tk.Canvas(
-    window,
+# Rounded card panel for the joke display
+card_canvas = tk.Canvas(
+    main_container,
     width=560,
     height=340,
-    bg=BG,
-    highlightthickness=0
+    bg=BG_COLOR,
+    highlightthickness=0,
 )
-panel_canvas.pack()
+card_canvas.pack()
+draw_rounded_box(card_canvas, 0, 0, 560, 340, 25, PANEL_COLOR)
 
-round_box(
-    panel_canvas,
-    0, 0, 560, 340,
-    25, PANEL
-)
-
-
-# Frame inside the rounded panel
-joke_frame = tk.Frame(
-    panel_canvas,
-    bg=PANEL,
-    width=500,
-    height=290
-)
-
+# Frame placed inside the rounded card canvas
+joke_frame = tk.Frame(card_canvas, bg=PANEL_COLOR, width=500, height=290)
 joke_frame.pack_propagate(False)
+card_canvas.create_window(280, 170, window=joke_frame)
 
-panel_canvas.create_window(
-    280, 170,
-    window=joke_frame
-)
-
-
-# Small heading
-heading_label = tk.Label(
+tk.Label(
     joke_frame,
     text="YOUR RANDOM JOKE",
     font=("Segoe UI", 10, "bold"),
-    bg=PANEL,
-    fg=BLUE
-)
-heading_label.pack(pady=(20, 20))
+    bg=PANEL_COLOR,
+    fg=BLUE,
+).pack(pady=(20, 20))
 
-
-# Joke question
 question_label = tk.Label(
     joke_frame,
     text="Click the button to get your first joke!",
     font=("Segoe UI", 19, "bold"),
-    bg=PANEL,
+    bg=PANEL_COLOR,
     fg=WHITE,
     wraplength=450,
-    justify="center"
+    justify="center",
 )
 question_label.pack(pady=(5, 20))
 
+# Divider line between setup and punchline
+tk.Frame(joke_frame, bg="#334155", width=400, height=1).pack(pady=10)
 
-# Line between question and answer
-line = tk.Frame(
-    joke_frame,
-    bg="#334155",
-    width=400,
-    height=1
-)
-line.pack(pady=10)
-
-
-# Joke punchline
 answer_label = tk.Label(
     joke_frame,
     text="The punchline will appear here.",
     font=("Segoe UI", 14, "bold"),
-    bg=PANEL,
+    bg=PANEL_COLOR,
     fg=YELLOW,
     wraplength=450,
-    justify="center"
+    justify="center",
 )
 answer_label.pack(pady=(15, 15))
 
-
-# Small status message
 status_label = tk.Label(
     joke_frame,
     text="Ready for a laugh?",
     font=("Segoe UI", 10),
-    bg=PANEL,
-    fg=GREY
+    bg=PANEL_COLOR,
+    fg=GREY,
 )
 status_label.pack(pady=5)
 
+# Primary action buttons
+button_row = tk.Frame(main_container, bg=BG_COLOR)
+button_row.pack(pady=(25, 10))
 
-# Frame for buttons
-button_frame = tk.Frame(
-    window,
-    bg=BG
-)
-button_frame.pack(pady=(25, 10))
-
-
-# Tell joke button
-tell_button = make_button(
-    button_frame,
+tell_btn = create_button(
+    button_row,
     "Alexa tell me a Joke",
-    tell_joke,
-    BLUE,
-    BG,
-    265
+    get_new_joke,
+    color=BLUE,
+    text_color=BG_COLOR,
+    hover_color=HOVER_BLUE,
+    width=265,
 )
-tell_button.grid(row=0, column=0, padx=7)
+tell_btn.grid(row=0, column=0, padx=7)
 
-
-# Show punchline button
-answer_button = make_button(
-    button_frame,
+punchline_btn = create_button(
+    button_row,
     "SHOW PUNCHLINE",
-    show_punchline,
-    CARD,
-    WHITE,
-    265
+    reveal_punchline,
+    color=CARD_COLOR,
+    text_color=WHITE,
+    hover_color=HOVER_DARK,
+    width=265,
 )
-answer_button.grid(row=0, column=1, padx=7)
+punchline_btn.grid(row=0, column=1, padx=7)
 
-
-# Next joke button
-next_button = make_button(
-    window,
+next_btn = create_button(
+    main_container,
     "NEXT JOKE  →",
-    tell_joke,
-    PANEL,
-    BLUE,
-    550
+    get_new_joke,
+    color=PANEL_COLOR,
+    text_color=BLUE,
+    hover_color=HOVER_DARK,
+    width=550,
 )
-next_button.pack(pady=(10, 20))
+next_btn.pack(pady=(10, 15))
 
+# Controls hint and quit button
+tk.Label(
+    main_container,
+    text="Press Esc to exit full screen · F11 to toggle",
+    font=("Segoe UI", 9),
+    bg=BG_COLOR,
+    fg=GREY,
+).pack(pady=(0, 5))
 
-# Exit button
-exit_button = tk.Button(
-    window,
+tk.Button(
+    main_container,
     text="Quit",
     font=("Segoe UI", 10, "bold"),
-    bg=BG,
+    bg=BG_COLOR,
     fg=GREY,
-    activebackground=BG,
+    activebackground=BG_COLOR,
     activeforeground=WHITE,
     relief="flat",
     cursor="hand2",
-    command=window.destroy
-)
-exit_button.pack(pady=5)
+    command=root.destroy,
+).pack(pady=2)
 
-
-# Start the program
-window.mainloop()
+# Ends the program immediately
+root.mainloop()

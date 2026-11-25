@@ -1,12 +1,9 @@
-import tkinter as tk
-from tkinter import ttk, messagebox
-from pathlib import Path
 import csv
+from pathlib import Path
+import tkinter as tk
+from tkinter import messagebox, simpledialog, ttk
 
-# STUDENT MANAGER - DARK NAVY DASHBOARD
-
-# COLOURS
-
+# dark theme colours
 BG = "#0F172A"
 SIDEBAR = "#111C30"
 PANEL = "#1E293B"
@@ -20,843 +17,619 @@ BORDER = "#334155"
 GREEN = "#4ADE80"
 RED = "#FB7185"
 YELLOW = "#FACC15"
-
 FONT = "Segoe UI"
 
-# The student marks file is stored in the resources folder.
-# as this Python file.
-
-FILE_PATH = Path(__file__).parent / "resources" / "studentMarks.txt"
-
-students = []
-current_filter = "all"
-
-# STUDENT CALCULATIONS
-
-def get_coursework(student):
-    # Add the three coursework marks.
-    return sum(student["marks"])
+MAX_COURSEWORK = 60  # 3 coursework marks out of 20 each
+MAX_EXAM = 100
+MAX_TOTAL = MAX_COURSEWORK + MAX_EXAM
+FILE_PATH = Path(__file__).parent / "studentMarks.txt"
 
 
-def get_total(student):
-    # Coursework is out of 60 and exam out of 100.
-    return get_coursework(student) + student["exam"]
+class Student:
+    # holds one student and calculates their total, precentage and grade
+    def __init__(self, code, name, marks, exam):
+        self.code = code
+        self.name = name
+        self.marks = list(marks)  # copy list so it doesnt get messed up later
+        self.exam = exam
 
+    def coursework_total(self):
+        return sum(self.marks)
 
-def get_percentage(student):
-    # Maximum possible total is 160.
-    return get_total(student) / 160 * 100
+    def total_score(self):
+        return self.coursework_total() + self.exam
 
+    def percentage(self):
+        return (self.total_score() / MAX_TOTAL) * 100
 
-def get_grade(student):
-    percentage = get_percentage(student)
+    def grade(self):
+        pct = self.percentage()
+        if pct >= 70:
+            return "A"
+        elif pct >= 60:
+            return "B"
+        elif pct >= 50:
+            return "C"
+        elif pct >= 40:
+            return "D"
+        else:
+            return "F"
 
-    if percentage >= 70:
-        return "A"
-    elif percentage >= 60:
-        return "B"
-    elif percentage >= 50:
-        return "C"
-    elif percentage >= 40:
-        return "D"
-    return "F"
+    def to_csv_row(self):
+        # save back in the same format as the text file
+        return [self.code, self.name, self.marks[0], self.marks[1], self.marks[2], self.exam]
 
-# FILE HANDLING
-
-def load_students():
-    global students
-
-    loaded = []
-
-    try:
-        with open(FILE_PATH, "r", encoding="utf-8",
-                  newline="") as file:
-            rows = list(csv.reader(file))
-
-        if not rows:
-            raise ValueError("The student file is empty.")
-
-        expected = int(rows[0][0])
-
-        for row in rows[1:]:
-            if not row or all(not x.strip() for x in row):
-                continue
-
-            if len(row) != 6:
-                raise ValueError("A record must have 6 fields.")
-
-            code = row[0].strip()
-            name = row[1].strip()
-            marks = [int(x.strip()) for x in row[2:5]]
-            exam = int(row[5].strip())
-
-            if not code.isascii() or not code.isdigit() or len(code) != 4 or not 1000 <= int(code) <= 9999:
-             raise ValueError("Invalid student code.")
-
-            if not name:
-                raise ValueError("Student name is missing.")
-
-            if any(m < 0 or m > 20 for m in marks):
-                raise ValueError("Invalid coursework mark.")
-
-            if not 0 <= exam <= 100:
-                raise ValueError("Invalid examination mark.")
-
-            if any(s["code"] == code for s in loaded):
-                raise ValueError("Duplicate student code.")
-
-            loaded.append({
-                "code": code,
-                "name": name,
-                "marks": marks,
-                "exam": exam
-            })
-
-        students = loaded
-
-        if len(students) != expected:
-            messagebox.showwarning(
-                "File Warning",
-                f"Expected {expected} records, "
-                f"but loaded {len(students)}."
-            )
-
-        set_status("Student records loaded successfully.")
-
-    except FileNotFoundError:
-        students = []
-        set_status("No student file found. Add a student to begin.")
-        messagebox.showwarning(
-            "File Not Found",
-            f"Could not find:\n{FILE_PATH}\n\n"
-            "You can add students and save a new file."
+    def details_text(self):
+        return (
+            f"Name: {self.name}\n"
+            f"Code: {self.code}\n"
+            f"Coursework: {self.coursework_total()}/{MAX_COURSEWORK} "
+            f"({self.marks[0]}, {self.marks[1]}, {self.marks[2]})\n"
+            f"Exam: {self.exam}/{MAX_EXAM}\n"
+            f"Total: {self.total_score()}/{MAX_TOTAL}\n"
+            f"Percentage: {self.percentage():.1f}%\n"
+            f"Grade: {self.grade()}"
         )
 
-    except (ValueError, IndexError, csv.Error) as error:
-        messagebox.showerror("File Error", str(error))
-        set_status("Could not load student records.")
 
-    except OSError as error:
-        messagebox.showerror("File Error", str(error))
+def check_student_data(code, name, marks, exam):
+    # student code has to be 4 digits between 1000 and 9999
+    if not (code.isdigit() and len(code) == 4 and 1000 <= int(code) <= 9999):
+        raise ValueError("Student code must be a number between 1000 and 9999.")
+    if name == "":
+        raise ValueError("Please enter a student name.")
+    for m in marks:
+        if m < 0 or m > 20:
+            raise ValueError("Each coursework mark must be between 0 and 20.")
+    if exam < 0 or exam > 100:
+        raise ValueError("Exam mark must be between 0 and 100.")
 
-    refresh_table()
 
-
-def save_students(show_message=True):
-    # Save all records to the text file.
-    try:
-        with open(FILE_PATH, "w", encoding="utf-8",
-                  newline="") as file:
-
-            writer = csv.writer(file)
-            writer.writerow([len(students)])
-
-            for student in students:
-                writer.writerow([
-                    student["code"],
-                    student["name"],
-                    *student["marks"],
-                    student["exam"]
-                ])
-
-        set_status("All student records saved successfully.")
-
-        if show_message:
-            messagebox.showinfo(
-                "Saved",
-                "Student records saved successfully."
-            )
-
-        return True
-
-    except OSError as error:
-        messagebox.showerror("Save Error", str(error))
-        return False
-
-# ROUNDED RECTANGLE HELPER
-
-def rounded_rectangle(canvas, x1, y1, x2, y2,
-                      radius=18, fill=PANEL):
-
-    # Draw a rounded polygon using standard Tkinter.
-    radius = min(radius, (x2-x1)/2, (y2-y1)/2)
-
-    points = [
-        x1+radius, y1,
-        x2-radius, y1,
-        x2, y1,
-        x2, y1+radius,
-        x2, y2-radius,
-        x2, y2,
-        x2-radius, y2,
-        x1+radius, y2,
-        x1, y2,
-        x1, y2-radius,
-        x1, y1+radius,
-        x1, y1
-    ]
-
-    return canvas.create_polygon(
-        points,
-        smooth=True,
-        splinesteps=16,
-        fill=fill,
-        outline=""
-    )
-
-# REUSABLE ROUNDED CARD
-
+# rounded card using canvas because normal tkinter frames dont have rounded corners
 class RoundedCard(tk.Canvas):
-
-    def __init__(self, parent, color=PANEL,
-                 radius=18, height=100, **kwargs):
-
-        super().__init__(
-            parent,
-            bg=BG,
-            highlightthickness=0,
-            bd=0,
-            height=height,
-            **kwargs
-        )
-
-        self.card_color = color
+    def __init__(self, parent, color=PANEL, radius=18, height=115):
+        super().__init__(parent, bg=BG, highlightthickness=0, bd=0, height=height)
+        self.color = color
         self.radius = radius
+        self.bind("<Configure>", self.redraw)
 
-        self.bind("<Configure>", self.draw_card)
-
-    def draw_card(self, event=None):
-        self.delete("background")
-
-        width = self.winfo_width()
-        height = self.winfo_height()
-
-        if width < 10 or height < 10:
+    def redraw(self, event=None):
+        self.delete("bg")
+        w = self.winfo_width()
+        h = self.winfo_height()
+        if w < 10 or h < 10:
             return
 
-        # Draw background behind card content.
-        points = [
-            18, 0,
-            width-18, 0,
-            width, 0,
-            width, 18,
-            width, height-18,
-            width, height,
-            width-18, height,
-            18, height,
-            0, height,
-            0, height-18,
-            0, 18,
-            0, 0
+        # stop radius from breaking on small sizes
+        r = min(self.radius, w / 2, h / 2)
+        pts = [
+            r, 0, w - r, 0, w, 0, w, r,
+            w, h - r, w, h, w - r, h, r, h,
+            0, h, 0, h - r, 0, r, 0, 0,
+        ]
+        self.create_polygon(pts, smooth=True, splinesteps=16, fill=self.color, outline="", tags="bg")
+        self.tag_lower("bg")
+
+
+class StudentApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Student Manager | Dashboard")
+        self.root.geometry("1250x780")
+        self.root.minsize(1000, 650)
+        self.root.configure(bg=BG)
+
+        # starts fullscreen, F11 toggles it and Esc goes back to window
+        self.fullscreen = True
+        self.root.attributes("-fullscreen", self.fullscreen)
+        self.root.bind("<F11>", self.toggle_fullscreen)
+        self.root.bind("<Escape>", self.exit_fullscreen)
+
+        self.students = []
+        self.stat_labels = {}
+
+        self.make_ui()
+        self.load_from_file()
+
+    def toggle_fullscreen(self, event=None):
+        self.fullscreen = not self.fullscreen
+        self.root.attributes("-fullscreen", self.fullscreen)
+
+    def exit_fullscreen(self, event=None):
+        if self.fullscreen:
+            self.fullscreen = False
+            self.root.attributes("-fullscreen", False)
+
+    def set_status(self, msg):
+        self.status_text.set(msg)
+
+    def make_ui(self):
+        # sidebar menu on the left
+        sidebar = tk.Frame(self.root, bg=SIDEBAR, width=240)
+        sidebar.pack(side="left", fill="y")
+        sidebar.pack_propagate(False)  # keeps sidebar width fixed
+
+        tk.Label(sidebar, text="STUDENT", font=(FONT, 22, "bold"), fg=WHITE, bg=SIDEBAR).pack(
+            anchor="w", padx=25, pady=(26, 0)
+        )
+        tk.Label(sidebar, text="MANAGER.", font=(FONT, 22, "bold"), fg=BLUE, bg=SIDEBAR).pack(
+            anchor="w", padx=25
+        )
+        tk.Label(sidebar, text="ACADEMIC MANAGEMENT", font=(FONT, 9, "bold"), fg=GREY, bg=SIDEBAR).pack(
+            anchor="w", padx=25, pady=(5, 20)
+        )
+
+        tk.Frame(sidebar, bg=BORDER, height=1).pack(fill="x", padx=20, pady=(0, 14))
+        tk.Label(sidebar, text="MAIN MENU", font=(FONT, 9, "bold"), bg=SIDEBAR, fg=GREY).pack(
+            anchor="w", padx=25, pady=(0, 8)
+        )
+
+        menu_buttons = [
+            ("☰  All Records", self.show_all, WHITE, CARD, BLUE_DARK),
+            ("◉  View / Find Student", self.view_one_student, WHITE, CARD, BLUE_DARK),
+            ("▲  Highest Score", self.show_highest, WHITE, CARD, BLUE_DARK),
+            ("▼  Lowest Score", self.show_lowest, WHITE, CARD, BLUE_DARK),
+            ("⇅  Sort Records", self.sort_students, WHITE, CARD, BLUE_DARK),
+            ("+  Add Student", self.add_student_window, WHITE, BLUE_DARK, BLUE),
+            ("✎  Edit Selected", self.edit_selected_student, WHITE, CARD, BLUE_DARK),
+            ("✕  Delete Selected", self.delete_selected_student, RED, CARD, BLUE_DARK),
+            ("↻  Reload File", self.load_from_file, WHITE, CARD, BLUE_DARK),
+            ("💾  Save to File", self.save_to_file, WHITE, CARD, BLUE_DARK),
         ]
 
-        self.create_polygon(
-            points,
-            smooth=True,
-            splinesteps=16,
-            fill=self.card_color,
-            outline="",
-            tags="background"
-        )
-
-        self.tag_lower("background")
-
-# MAIN WINDOW
-
-root = tk.Tk()
-root.title("Student Manager | Dashboard")
-root.geometry("1250x780")
-root.minsize(1000, 650)
-root.configure(bg=BG)
-
-# APPLICATION LAYOUT
-
-sidebar = tk.Frame(root, bg=SIDEBAR, width=235)
-sidebar.pack(side="left", fill="y")
-sidebar.pack_propagate(False)
-
-main = tk.Frame(root, bg=BG)
-main.pack(side="left", fill="both", expand=True)
-
-# STATUS MESSAGE
-
-status_var = tk.StringVar(value="Ready")
-
-def set_status(message):
-    status_var.set(message)
-
-# SIDEBAR HEADER
-
-tk.Label(
-    sidebar,
-    text="STUDENT",
-    font=(FONT, 22, "bold"),
-    fg=WHITE,
-    bg=SIDEBAR
-).pack(anchor="w", padx=25, pady=(30, 0))
-
-tk.Label(
-    sidebar,
-    text="MANAGER.",
-    font=(FONT, 22, "bold"),
-    fg=BLUE,
-    bg=SIDEBAR
-).pack(anchor="w", padx=25)
-
-tk.Label(
-    sidebar,
-    text="ACADEMIC MANAGEMENT",
-    font=(FONT, 9, "bold"),
-    fg=GREY,
-    bg=SIDEBAR
-).pack(anchor="w", padx=25, pady=(5, 30))
-
-tk.Frame(
-    sidebar, bg=BORDER, height=1
-).pack(fill="x", padx=20, pady=(0, 20))
-
-tk.Label(
-    sidebar,
-    text="MAIN MENU",
-    font=(FONT, 9, "bold"),
-    bg=SIDEBAR,
-    fg=GREY
-).pack(anchor="w", padx=25, pady=(0, 12))
-
-# MAIN HEADER
-
-header = tk.Frame(main, bg=BG)
-header.pack(fill="x", padx=30, pady=(25, 12))
-
-tk.Label(
-    header,
-    text="Dashboard",
-    font=(FONT, 27, "bold"),
-    bg=BG,
-    fg=WHITE
-).pack(anchor="w")
-
-tk.Label(
-    header,
-    text="Manage student records and academic performance",
-    font=(FONT, 10),
-    bg=BG,
-    fg=GREY
-).pack(anchor="w", pady=(4, 0))
-
-# DASHBOARD STATISTICS
-
-stats_frame = tk.Frame(main, bg=BG)
-stats_frame.pack(fill="x", padx=25, pady=(12, 18))
-
-stats_frame.columnconfigure(0, weight=1)
-stats_frame.columnconfigure(1, weight=1)
-stats_frame.columnconfigure(2, weight=1)
-
-stat_values = {}
-
-def create_stat_card(column, title, color):
-
-    canvas = RoundedCard(
-        stats_frame,
-        color=PANEL,
-        height=120
-    )
-
-    canvas.grid(
-        row=0,
-        column=column,
-        sticky="ew",
-        padx=6
-    )
-
-    # Canvas text is drawn on top of the rounded card.
-    canvas.create_text(
-        22, 27,
-        text=title,
-        fill=GREY,
-        font=(FONT, 11),
-        anchor="w",
-        tags="content"
-    )
-
-    value_id = canvas.create_text(
-        22, 73,
-        text="0",
-        fill=color,
-        font=(FONT, 26, "bold"),
-        anchor="w",
-        tags="content"
-    )
-
-    stat_values[title] = (canvas, value_id)
-
-    return canvas
-
-
-create_stat_card(0, "Total Students", BLUE)
-create_stat_card(1, "Class Average", GREEN)
-create_stat_card(2, "Highest Score", YELLOW)
-
-
-def update_stats():
-
-    count = len(students)
-
-    if students:
-        average = sum(
-            get_percentage(s) for s in students
-        ) / count
-
-        highest = max(get_total(s) for s in students)
-    else:
-        average = 0
-        highest = 0
-
-    values = {
-        "Total Students": str(count),
-        "Class Average": f"{average:.1f}%",
-        "Highest Score": f"{highest}/160"
-    }
-
-    for title, value in values.items():
-        canvas, item = stat_values[title]
-        canvas.itemconfig(item, text=value)
-
-
-# TABLE HEADER AND SEARCH
-
-table_header = tk.Frame(main, bg=BG)
-table_header.pack(fill="x", padx=30, pady=(0, 12))
-
-tk.Label(
-    table_header,
-    text="Student Records",
-    font=(FONT, 17, "bold"),
-    bg=BG,
-    fg=WHITE
-).pack(side="left")
-
-search_var = tk.StringVar()
-
-search_entry = tk.Entry(
-    table_header,
-    textvariable=search_var,
-    bg=INPUT,
-    fg=WHITE,
-    insertbackground=WHITE,
-    relief="flat",
-    font=(FONT, 11),
-    width=27,
-    bd=0
-)
-
-search_entry.pack(
-    side="right",
-    ipady=10,
-    padx=(10, 0)
-)
-
-tk.Label(
-    table_header,
-    text="SEARCH",
-    bg=BG,
-    fg=GREY,
-    font=(FONT, 9, "bold")
-).pack(side="right")
-
-# TABLE STYLING
-
-style = ttk.Style()
-style.theme_use("clam")
-
-style.configure(
-    "Modern.Treeview",
-    background=PANEL,
-    foreground=WHITE,
-    fieldbackground=PANEL,
-    rowheight=40,
-    font=(FONT, 10),
-    borderwidth=0,
-    relief="flat"
-)
-
-style.configure(
-    "Modern.Treeview.Heading",
-    background=CARD,
-    foreground=WHITE,
-    font=(FONT, 10, "bold"),
-    padding=12,
-    relief="flat"
-)
-
-style.map(
-    "Modern.Treeview",
-    background=[("selected", BLUE_DARK)],
-    foreground=[("selected", WHITE)]
-)
-
-style.map(
-    "Modern.Treeview.Heading",
-    background=[("active", DARK_BLUE)]
-) if False else None
-
-# STUDENT TABLE
-
-table_container = tk.Frame(
-    main,
-    bg=PANEL,
-    padx=12,
-    pady=12
-)
-
-table_container.pack(
-    fill="both",
-    expand=True,
-    padx=30,
-    pady=(0, 15)
-)
-
-columns = (
-    "Code",
-    "Name",
-    "Coursework",
-    "Exam",
-    "Total",
-    "Percentage",
-    "Grade"
-)
-
-tree = ttk.Treeview(
-    table_container,
-    columns=columns,
-    show="headings",
-    style="Modern.Treeview",
-    selectmode="browse"
-)
-
-widths = [90, 190, 115, 90, 90, 115, 75]
-
-for column, width in zip(columns, widths):
-    tree.heading(column, text=column)
-    tree.column(
-        column,
-        width=width,
-        minwidth=65,
-        anchor="center",
-        stretch=True
-    )
-
-tree.column("Name", anchor="w")
-
-scrollbar = ttk.Scrollbar(
-    table_container,
-    orient="vertical",
-    command=tree.yview
-)
-
-tree.configure(yscrollcommand=scrollbar.set)
-
-scrollbar.pack(side="right", fill="y")
-tree.pack(side="left", fill="both", expand=True)
-
-# Alternate row colours.
-tree.tag_configure("even", background=PANEL)
-tree.tag_configure("odd", background="#26364C")
-
-# REFRESH AND FILTER TABLE
-
-def refresh_table(data=None):
-
-    for item in tree.get_children():
-        tree.delete(item)
-
-    display_data = students if data is None else data
-
-    for index, student in enumerate(display_data):
-
-        tag = "even" if index % 2 == 0 else "odd"
-
-        tree.insert(
-            "",
-            "end",
-            iid=student["code"],
-            values=(
-                student["code"],
-                student["name"],
-                f"{get_coursework(student)}/60",
-                f"{student['exam']}/100",
-                f"{get_total(student)}/160",
-                f"{get_percentage(student):.1f}%",
-                get_grade(student)
-            ),
-            tags=(tag,)
-        )
-
-    update_stats()
-
-
-def apply_search(*args):
-
-    query = search_var.get().strip().lower()
-
-    results = [
-        s for s in students
-        if query in s["code"].lower()
-        or query in s["name"].lower()
-    ]
-
-    refresh_table(results)
-
-    if query:
-        set_status(f"Found {len(results)} matching students.")
-
-
-search_var.trace_add("write", apply_search)
-
-
-def display_all():
-
-    search_var.set("")
-    refresh_table()
-    set_status("Displaying all student records.")
-
-# SELECTED STUDENT
-
-def get_selected_student():
-
-    selected = tree.selection()
-
-    if not selected:
-        messagebox.showwarning(
-            "Select Student",
-            "Please select a student from the table first."
-        )
-        return None
-
-    code = selected[0]
-
-    for student in students:
-        if student["code"] == code:
-            return student
-
-    return None
-
-# ADD / UPDATE STUDENT FORM
-# Display the selected student's results.
-# View individual student record
-def view_student():
-    student = get_selected_student()
-
-    if student:
-        messagebox.showinfo(
-            "Student Record",
-            f"Name: {student['name']}\n"
-            f"Code: {student['code']}\n"
-            f"Coursework: {get_coursework(student)}/60\n"
-            f"Exam: {student['exam']}/100\n"
-            f"Total: {get_total(student)}/160\n"
-            f"Percentage: {get_percentage(student):.1f}%\n"
-            f"Grade: {get_grade(student)}"
-        )
-
-def student_form(existing=None):
-
-    form = tk.Toplevel(root)
-
-    form.title(
-        "Update Student" if existing else "Add Student"
-    )
-
-    form.geometry("480x650")
-    form.minsize(450, 610)
-    form.configure(bg=BG)
-    form.transient(root)
-    form.grab_set()
-
-    # Center the form over the main window.
-    form.update_idletasks()
-
-    x = root.winfo_rootx() + (
-        root.winfo_width() - form.winfo_width()
-    ) // 2
-
-    y = root.winfo_rooty() + (
-        root.winfo_height() - form.winfo_height()
-    ) // 2
-
-    form.geometry(f"+{max(0, x)}+{max(0, y)}")
-
-    title = "Edit Student" if existing else "Add New Student"
-
-    tk.Label(
-        form,
-        text=title,
-        bg=BG,
-        fg=WHITE,
-        font=(FONT, 23, "bold")
-    ).pack(anchor="w", padx=35, pady=(25, 5))
-
-    tk.Label(
-        form,
-        text="Enter the student information below.",
-        bg=BG,
-        fg=GREY,
-        font=(FONT, 10)
-    ).pack(anchor="w", padx=35, pady=(0, 18))
-
-    panel = tk.Frame(
-        form,
-        bg=PANEL,
-        padx=25,
-        pady=18
-    )
-
-    panel.pack(
-        fill="both",
-        expand=True,
-        padx=30,
-        pady=(0, 25)
-    )
-
-    labels = [
-        "Student Code",
-        "Student Name",
-        "Coursework Mark 1 (0-20)",
-        "Coursework Mark 2 (0-20)",
-        "Coursework Mark 3 (0-20)",
-        "Exam Mark (0-100)"
-    ]
-
-    values = [
-        existing["code"] if existing else "",
-        existing["name"] if existing else "",
-        existing["marks"][0] if existing else "",
-        existing["marks"][1] if existing else "",
-        existing["marks"][2] if existing else "",
-        existing["exam"] if existing else ""
-    ]
-
-    entries = []
-
-    for label_text, value in zip(labels, values):
-
+        for label, action, fg, bg, active_bg in menu_buttons:
+            tk.Button(
+                sidebar,
+                text=label,
+                command=action,
+                bg=bg,
+                fg=fg,
+                activebackground=active_bg,
+                activeforeground=WHITE,
+                font=(FONT, 10, "bold"),
+                relief="flat",
+                anchor="w",
+                padx=14,
+                cursor="hand2",
+                bd=0,
+            ).pack(fill="x", padx=18, pady=4, ipady=7)
+
+        # main area on the right
+        main = tk.Frame(self.root, bg=BG)
+        main.pack(side="left", fill="both", expand=True)
+
+        header = tk.Frame(main, bg=BG)
+        header.pack(fill="x", padx=30, pady=(22, 10))
+        tk.Label(header, text="Dashboard", font=(FONT, 27, "bold"), bg=BG, fg=WHITE).pack(anchor="w")
         tk.Label(
-            panel,
-            text=label_text,
-            bg=PANEL,
+            header,
+            text="Manage student records and academic performance  •  F11 Fullscreen  •  ESC Windowed",
+            font=(FONT, 10),
+            bg=BG,
             fg=GREY,
-            font=(FONT, 10, "bold")
-        ).pack(anchor="w", pady=(6, 4))
+        ).pack(anchor="w", pady=(4, 0))
 
-        entry = tk.Entry(
-            panel,
+        # top stat cards
+        cards_row = tk.Frame(main, bg=BG)
+        cards_row.pack(fill="x", padx=25, pady=(10, 16))
+        cards_row.columnconfigure((0, 1, 2), weight=1)
+
+        self.make_stat_card(cards_row, 0, "Total Students", BLUE)
+        self.make_stat_card(cards_row, 1, "Class Average", GREEN)
+        self.make_stat_card(cards_row, 2, "Highest Score", YELLOW)
+
+        # heading and live search box
+        top_bar = tk.Frame(main, bg=BG)
+        top_bar.pack(fill="x", padx=30, pady=(0, 10))
+
+        self.heading_var = tk.StringVar(value="Student Records")
+        tk.Label(top_bar, textvariable=self.heading_var, font=(FONT, 17, "bold"), bg=BG, fg=WHITE).pack(
+            side="left"
+        )
+
+        self.search_var = tk.StringVar()
+        self.search_var.trace_add("write", self.on_search)  # updates search as u type
+
+        tk.Entry(
+            top_bar,
+            textvariable=self.search_var,
             bg=INPUT,
             fg=WHITE,
             insertbackground=WHITE,
-            disabledbackground=CARD,
-            disabledforeground=GREY,
             relief="flat",
             font=(FONT, 11),
-            bd=0
+            width=25,
+            bd=0,
+        ).pack(side="right", ipady=8, padx=(10, 0))
+
+        tk.Label(top_bar, text="SEARCH", bg=BG, fg=GREY, font=(FONT, 9, "bold")).pack(side="right")
+
+        # treeview table
+        style = ttk.Style()
+        style.theme_use("clam")
+        style.configure(
+            "StudentTable.Treeview",
+            background=PANEL,
+            foreground=WHITE,
+            fieldbackground=PANEL,
+            rowheight=38,
+            font=(FONT, 10),
+            borderwidth=0,
+            relief="flat",
+        )
+        style.configure(
+            "StudentTable.Treeview.Heading",
+            background=CARD,
+            foreground=WHITE,
+            font=(FONT, 10, "bold"),
+            padding=11,
+            relief="flat",
+        )
+        style.map("StudentTable.Treeview", background=[("selected", BLUE_DARK)], foreground=[("selected", WHITE)])
+        style.map("StudentTable.Treeview.Heading", background=[("active", BLUE_DARK)])
+
+        table_box = tk.Frame(main, bg=PANEL, padx=12, pady=12)
+        table_box.pack(fill="both", expand=True, padx=30, pady=(0, 12))
+
+        cols = ("Code", "Name", "Coursework", "Exam", "Total", "Percentage", "Grade")
+        col_widths = [90, 190, 115, 90, 90, 115, 75]
+
+        self.table = ttk.Treeview(
+            table_box, columns=cols, show="headings", style="StudentTable.Treeview", selectmode="browse"
+        )
+        for col, w in zip(cols, col_widths):
+            self.table.heading(col, text=col)
+            self.table.column(col, width=w, minwidth=65, anchor="w" if col == "Name" else "center", stretch=True)
+
+        scroll = ttk.Scrollbar(table_box, orient="vertical", command=self.table.yview)
+        self.table.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.table.pack(side="left", fill="both", expand=True)
+
+        # alternate row colours so lines are easier to follow
+        self.table.tag_configure("even", background=PANEL)
+        self.table.tag_configure("odd", background="#26364C")
+
+        # status bar at bottom
+        self.status_text = tk.StringVar(value="Ready")
+        status_bar = tk.Frame(main, bg=SIDEBAR, height=34)
+        status_bar.pack(fill="x", side="bottom")
+        status_bar.pack_propagate(False)
+        tk.Label(status_bar, textvariable=self.status_text, bg=SIDEBAR, fg=GREY, font=(FONT, 9)).pack(
+            side="left", padx=25
         )
 
-        entry.pack(fill="x", ipady=8)
-        entry.insert(0, str(value))
-        entries.append(entry)
+    def make_stat_card(self, parent, col, title, colour):
+        card = RoundedCard(parent, color=PANEL, height=115)
+        card.grid(row=0, column=col, sticky="ew", padx=6)
+        card.create_text(22, 26, text=title, fill=GREY, font=(FONT, 11), anchor="w")
+        val_id = card.create_text(22, 70, text="0", fill=colour, font=(FONT, 26, "bold"), anchor="w")
+        self.stat_labels[title] = (card, val_id)
 
-    if existing:
-        entries[0].config(state="disabled")
+    def update_cards(self):
+        total_students = len(self.students)
+        if total_students > 0:
+            avg_pct = sum(s.percentage() for s in self.students) / total_students
+            best_score = max(s.total_score() for s in self.students)
+        else:
+            avg_pct = 0.0
+            best_score = 0
 
-    # Validate the form and save the record.
-    def save_record():
+        card_data = {
+            "Total Students": str(total_students),
+            "Class Average": f"{avg_pct:.1f}%",
+            "Highest Score": f"{best_score}/{MAX_TOTAL}",
+        }
+        for title, text in card_data.items():
+            card, item_id = self.stat_labels[title]
+            card.itemconfig(item_id, text=text)
 
-        code = (
-            existing["code"]
-            if existing else entries[0].get().strip()
-        )
+    def fill_table(self, rows=None, title="Student Records"):
+        self.heading_var.set(title)
+        # clear table before adding rows
+        for row_id in self.table.get_children():
+            self.table.delete(row_id)
 
-        name = entries[1].get().strip()
-
-        try:
-            marks = [
-                int(entries[2].get()),
-                int(entries[3].get()),
-                int(entries[4].get())
-            ]
-
-            exam = int(entries[5].get())
-
-            if not code.isascii() or not code.isdigit() or len(code) != 4 or not 1000 <= int(code) <= 9999:
-             raise ValueError(
-            "Student code must be between 1000 and 9999.") 
-
-            if not name:
-                raise ValueError("Please enter a student name.")
-
-            if any(m < 0 or m > 20 for m in marks):
-                raise ValueError(
-                    "Coursework marks must be between 0 and 20."
-                )
-
-            if not 0 <= exam <= 100:
-                raise ValueError(
-                    "Exam mark must be between 0 and 100."
-                )
-
-            if not existing and any(
-                s["code"] == code for s in students
-            ):
-                raise ValueError(
-                    "This student code already exists."
-                )
-
-            record = {
-                "code": code,
-                "name": name,
-                "marks": marks,
-                "exam": exam
-            }
-
-            if existing:
-                index = students.index(existing)
-                students[index] = record
-            else:
-                students.append(record)
-
-            if save_students(show_message=False):
-                form.destroy()
-                apply_search()
-                set_status(
-                    f"Student {code} saved successfully."
-                )
-            else:
-                # The record remains in memory even if
-                # writing to disk fails.
-                form.destroy()
-                apply_search()
-
-        except ValueError as error:
-            messagebox.showerror(
-                "Invalid Details",
-                str(error),
-                parent=form
+        data = self.students if rows is None else rows
+        for i, s in enumerate(data):
+            tag = "even" if i % 2 == 0 else "odd"
+            self.table.insert(
+                "",
+                "end",
+                iid=s.code,
+                values=(
+                    s.code,
+                    s.name,
+                    f"{s.coursework_total()}/{MAX_COURSEWORK}",
+                    f"{s.exam}/{MAX_EXAM}",
+                    f"{s.total_score()}/{MAX_TOTAL}",
+                    f"{s.percentage():.1f}%",
+                    s.grade(),
+                ),
+                tags=(tag,),
             )
 
-    tk.Button(
-        panel,
-        text="SAVE STUDENT",
-        command=save_record,
-        bg=BLUE_DARK,
-        fg=WHITE,
-        activebackground=BLUE,
-        activeforeground=BG,
-        font=(FONT, 11, "bold"),
-        relief="flat",
-        cursor="hand2",
-        bd=0
-    ).pack(fill="x", ipady=11, pady=(20, 0))
+        self.update_cards()
 
-    entries[1 if existing else 0].focus_set()
+    def load_from_file(self):
+        loaded = []
+        try:
+            with open(FILE_PATH, "r", encoding="utf-8", newline="") as f:
+                lines = list(csv.reader(f))
 
-    form.bind("<Return>", lambda event: save_record())
+            if len(lines) == 0:
+                raise ValueError("The file is empty.")
+
+            # first line gives how many students are in the file
+            expected_count = int(lines[0][0].strip())
+
+            for row in lines[1:]:
+                if not row or all(cell.strip() == "" for cell in row):
+                    continue  # ignore empty lines
+                if len(row) != 6:
+                    raise ValueError("Each student line needs 6 values separated by commas.")
+
+                code = row[0].strip()
+                name = row[1].strip()
+                marks = [int(row[2].strip()), int(row[3].strip()), int(row[4].strip())]
+                exam = int(row[5].strip())
+
+                check_student_data(code, name, marks, exam)
+
+                for existing in loaded:
+                    if existing.code == code:
+                        raise ValueError(f"Duplicate student code: {code}")
+
+                loaded.append(Student(code, name, marks, exam))
+
+            self.students = loaded
+            if len(self.students) != expected_count:
+                messagebox.showwarning(
+                    "Count Mismatch",
+                    f"First line says {expected_count} students, but {len(self.students)} were loaded.",
+                )
+            self.set_status("Loaded studentMarks.txt")
+
+        except FileNotFoundError:
+            self.students = []
+            self.set_status("studentMarks.txt not found yet.")
+            messagebox.showwarning(
+                "File Not Found",
+                f"Couldn't find:\n{FILE_PATH}\n\nAdd a student to create the file.",
+            )
+        except (ValueError, IndexError, csv.Error, OSError) as err:
+            messagebox.showerror("Error Loading File", str(err))
+            self.set_status("Failed to load student marks.")
+
+        self.fill_table()
+
+    def save_to_file(self, show_popup=True):
+        try:
+            FILE_PATH.parent.mkdir(parents=True, exist_ok=True)
+            with open(FILE_PATH, "w", encoding="utf-8", newline="") as f:
+                writer = csv.writer(f, lineterminator="\n")
+                writer.writerow([len(self.students)])
+                for s in self.students:
+                    writer.writerow(s.to_csv_row())
+
+            self.set_status("Saved changes to studentMarks.txt")
+            if show_popup:
+                messagebox.showinfo("Saved", "Student records saved to file.")
+            return True
+        except OSError as err:
+            messagebox.showerror("Save Error", str(err))
+            return False
+
+    def get_selected(self, warn=True):
+        chosen = self.table.selection()
+        if not chosen:
+            if warn:
+                messagebox.showwarning("No Selection", "Click a student in the table first.")
+            return None
+        for s in self.students:
+            if s.code == chosen[0]:
+                return s
+        return None
+
+    def show_all(self):
+        self.search_var.set("")
+        self.fill_table(self.students, "All Student Records")
+        if self.students:
+            avg = sum(s.percentage() for s in self.students) / len(self.students)
+            self.set_status(f"{len(self.students)} students  •  Class average: {avg:.1f}%")
+        else:
+            self.set_status("0 students in class.")
+
+    def on_search(self, *args):
+        term = self.search_var.get().strip().lower()
+        if term == "":
+            self.fill_table(self.students, "Student Records")
+            return
+        found = [s for s in self.students if term in s.code.lower() or term in s.name.lower()]
+        self.fill_table(found, f"Search Results ({len(found)})")
+        self.set_status(f"Found {len(found)} matching student(s).")
+
+    def view_one_student(self):
+        # check selected row first, otherwise ask for code or name
+        student = self.get_selected(warn=False)
+        if student is None:
+            query = simpledialog.askstring("Find Student", "Enter student code or name:", parent=self.root)
+            if not query:
+                return
+            q = query.strip().lower()
+            for s in self.students:
+                if s.code.lower() == q or q in s.name.lower():
+                    student = s
+                    break
+            if student is None:
+                messagebox.showinfo("Not Found", f"No student found for '{query.strip()}'.")
+                return
+
+        self.fill_table([student], f"Student Record — {student.name} ({student.code})")
+        messagebox.showinfo("Student Details", student.details_text())
+
+    def show_highest(self):
+        if not self.students:
+            messagebox.showinfo("No Data", "No students to check.")
+            return
+        top = max(self.students, key=lambda s: s.total_score())
+        self.fill_table([top], f"Highest Score — {top.name}")
+        self.set_status(f"Highest score: {top.name} ({top.total_score()}/{MAX_TOTAL})")
+        messagebox.showinfo("Highest Score", top.details_text())
+
+    def show_lowest(self):
+        if not self.students:
+            messagebox.showinfo("No Data", "No students to check.")
+            return
+        low = min(self.students, key=lambda s: s.total_score())
+        self.fill_table([low], f"Lowest Score — {low.name}")
+        self.set_status(f"Lowest score: {low.name} ({low.total_score()}/{MAX_TOTAL})")
+        messagebox.showinfo("Lowest Score", low.details_text())
+
+    def sort_students(self):
+        if not self.students:
+            messagebox.showinfo("No Data", "No students to sort.")
+            return
+
+        is_desc = messagebox.askyesno(
+            "Sort Records",
+            "Sort in DESCENDING order (highest score first)?\n\nChoose 'No' for ASCENDING (lowest first).",
+        )
+        sorted_list = sorted(self.students, key=lambda s: s.total_score(), reverse=is_desc)
+        order_name = "Descending" if is_desc else "Ascending"
+        self.fill_table(sorted_list, f"Sorted Records ({order_name})")
+        self.set_status(f"Sorted in {order_name.lower()} order.")
+
+    def edit_selected_student(self):
+        student = self.get_selected()
+        if student:
+            self.student_popup(existing=student)
+
+    def delete_selected_student(self):
+        student = self.get_selected()
+        if not student:
+            return
+        confirm = messagebox.askyesno("Confirm Delete", f"Delete {student.name} ({student.code})?")
+        if not confirm:
+            return
+
+        self.students = [s for s in self.students if s.code != student.code]
+        self.save_to_file(show_popup=False)
+        self.on_search()
+        self.set_status(f"Deleted {student.name}.")
+
+    def add_student_window(self):
+        self.student_popup(existing=None)
+
+    def student_popup(self, existing=None):
+        win = tk.Toplevel(self.root)
+        win.title("Edit Student" if existing else "Add Student")
+        win.geometry("480x650")
+        win.minsize(450, 610)
+        win.configure(bg=BG)
+        win.transient(self.root)
+        win.grab_set()  # locks main window until popup closes
+
+        # centre popup over main window
+        win.update_idletasks()
+        x = self.root.winfo_rootx() + (self.root.winfo_width() - win.winfo_width()) // 2
+        y = self.root.winfo_rooty() + (self.root.winfo_height() - win.winfo_height()) // 2
+        win.geometry(f"+{max(0, x)}+{max(0, y)}")
+
+        tk.Label(
+            win,
+            text="Edit Student" if existing else "Add Student",
+            bg=BG,
+            fg=WHITE,
+            font=(FONT, 23, "bold"),
+        ).pack(anchor="w", padx=35, pady=(25, 5))
+        tk.Label(win, text="Fill in the student details below.", bg=BG, fg=GREY, font=(FONT, 10)).pack(
+            anchor="w", padx=35, pady=(0, 18)
+        )
+
+        box = tk.Frame(win, bg=PANEL, padx=25, pady=18)
+        box.pack(fill="both", expand=True, padx=30, pady=(0, 25))
+
+        labels_and_vals = [
+            ("Student Code (1000-9999)", existing.code if existing else ""),
+            ("Student Name", existing.name if existing else ""),
+            ("Coursework 1 (0-20)", existing.marks[0] if existing else ""),
+            ("Coursework 2 (0-20)", existing.marks[1] if existing else ""),
+            ("Coursework 3 (0-20)", existing.marks[2] if existing else ""),
+            ("Exam Mark (0-100)", existing.exam if existing else ""),
+        ]
+
+        inputs = []
+        for lbl, val in labels_and_vals:
+            tk.Label(box, text=lbl, bg=PANEL, fg=GREY, font=(FONT, 10, "bold")).pack(anchor="w", pady=(6, 4))
+            ent = tk.Entry(
+                box,
+                bg=INPUT,
+                fg=WHITE,
+                insertbackground=WHITE,
+                disabledbackground=CARD,
+                disabledforeground=GREY,
+                relief="flat",
+                font=(FONT, 11),
+                bd=0,
+            )
+            ent.pack(fill="x", ipady=8)
+            ent.insert(0, str(val))
+            inputs.append(ent)
+
+        if existing:
+            inputs[0].config(state="disabled")  # cant change student code when editing
+
+        def on_save():
+            code = existing.code if existing else inputs[0].get().strip()
+            name = inputs[1].get().strip()
+            try:
+                marks = [int(inputs[2].get()), int(inputs[3].get()), int(inputs[4].get())]
+                exam = int(inputs[5].get())
+                check_student_data(code, name, marks, exam)
+
+                if not existing:
+                    for s in self.students:
+                        if s.code == code:
+                            raise ValueError("A student with this code already exists.")
+
+                new_student = Student(code, name, marks, exam)
+                if existing:
+                    idx = self.students.index(existing)
+                    self.students[idx] = new_student
+                else:
+                    self.students.append(new_student)
+
+                ok = self.save_to_file(show_popup=False)
+                win.destroy()
+                self.on_search()
+                if ok:
+                    self.set_status(f"Saved student {code}.")
+                else:
+                    self.set_status(f"Updated {code} in app, but saving to file failed.")
+
+            except ValueError as err:
+                messagebox.showerror("Invalid Input", str(err), parent=win)
+
+        tk.Button(
+            box,
+            text="SAVE STUDENT",
+            command=on_save,
+            bg=BLUE_DARK,
+            fg=WHITE,
+            activebackground=BLUE,
+            activeforeground=BG,
+            font=(FONT, 11, "bold"),
+            relief="flat",
+            cursor="hand2",
+            bd=0,
+        ).pack(fill="x", ipady=11, pady=(20, 0))
+
+        inputs[1 if existing else 0].focus_set()
+        win.bind("<Return>", lambda event: on_save())
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = StudentApp(root)
+    root.mainloop()
